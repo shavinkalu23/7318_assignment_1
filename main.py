@@ -8,23 +8,31 @@ Created on Thu Sep 14 22:04:19 2023
 
 import pandas as pd
 import re
+import torch
+import numpy as np
+from numpy import genfromtxt
+from torch.utils.data import Dataset, DataLoader
+#Read normialised data file
 
-# Define a function to parse the data
+
+# Open and read the file
+with open('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt', 'r') as file:
+    lines = file.readlines()
+
+
+
+
+
+# parse the data to a pandas dataframe
 def parse_data(line):
     label, features = line.split(' ', 1)
     label = int(label)
-    features = dict(re.findall(r'(\d+):([\d.]+)', features))
+    features = dict(re.findall(r'(\d+):([\d.-]+)', features))
     return label, features
 
-# Provided data
-data = [
-    "-1 1:6.000000 2:148.000000 3:72.000000 4:35.000000 5:0.000000 6:33.599998 7:0.627000 8:50.000000",
-    "+1 1:1.000000 2:85.000000 3:66.000000 4:29.000000 5:0.000000 6:26.600000 7:0.351000 8:31.000000",
-    "-1 1:8.000000 2:183.000000 3:64.000000 4:0.000000 5:0.000000 6:23.299999 7:0.672000 8:32.000000"
-]
 
 # Parse the data and create a list of dictionaries
-parsed_data = [parse_data(line) for line in data]
+parsed_data = [parse_data(line) for line in lines]
 
 # Create a DataFrame
 df = pd.DataFrame(parsed_data, columns=['Label', 'Features'])
@@ -32,5 +40,15 @@ df = pd.DataFrame(parsed_data, columns=['Label', 'Features'])
 # Expand the Features column into separate columns
 df = pd.concat([df.drop(['Features'], axis=1), df['Features'].apply(pd.Series).astype(float)], axis=1)
 
-# Print the resulting DataFrame
-print(df)
+# Convert features to tensors
+X = torch.tensor(df[df.columns[1:]].values, dtype = torch.float32) 
+
+# Convert labels to tensor
+y = torch.tensor(df[df.columns[0]].values, dtype = torch.float32)
+
+
+class MyDataset(Dataset):
+    def __init__(self, path):
+        self.data = 
+        
+    def __getitem__(self, index)
