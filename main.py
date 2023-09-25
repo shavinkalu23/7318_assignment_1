@@ -26,6 +26,29 @@ class Perceptron(nn.Module):
         return out
 
 
+class MultiLayerPerceptron(nn.Module):
+    def __init__(self, input_size, hidden_sizes, output_size):
+        super(MultiLayerPerceptron, self).__init__()
+        
+        layers = []
+        sizes = [input_size] + hidden_sizes + [output_size]
+        for i in range(len(sizes)-1):
+            layers.append(nn.Linear(sizes[i], sizes[i+1]))
+            layers.append(nn.ReLU())  # You can use other activation functions as well
+        
+        self.model = nn.Sequential(*layers)
+        
+    def forward(self, x):
+        return torch.sigmoid(self.model(x))
+
+# Usage example:
+input_size = 8  # Assuming 8 input features
+hidden_sizes = [16, 8]  # Example: Two hidden layers with 16 and 8 units
+output_size = 1
+
+model = MultiLayerPerceptron(input_size, hidden_sizes, output_size)
+
+
 #Read normialised data file
 class MyDataset(Dataset):
     def __init__(self, path):
@@ -64,33 +87,6 @@ class MyDataset(Dataset):
         return len(self.X)
     
 
-    
-dataset = MyDataset('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt')
-
-
-# Split dataset into training, validation, and test sets
-train_dataset, test_dataset = train_test_split(dataset, test_size=0.2, random_state=42)
-# 
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
-# Set fixed random number seed
-torch.manual_seed(42) 
-
-# Define hyperparameters to tune
-learning_rates = [0.001, 0.01, 0.1, 0.5, 1]
-num_epochs = [50, 100, 200]
-
-
-best_accuracy = 0
-best_lr = 0
-best_epochs = 0
-
-# Perform k-fold cross-validation
-num_folds = 5
-kf = KFold(n_splits=num_folds)
-
-
 def train_loop(dataloader, model,loss_fn, optimizer):
     #size = len(dataloader.dataset)
     model.train()
@@ -118,6 +114,44 @@ def test_loop(dataloader, model, loss_fn):
 
             accuracy = correct / total
             return accuracy
+
+# set epoch of 50 to get rough idea of which parameters work
+
+learning_rate = 0.5
+batch_size = 10
+epochs  = 50
+
+
+
+
+    
+dataset = MyDataset('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt')
+
+
+# Split dataset into training, validation, and test sets
+train_dataset, test_dataset = train_test_split(dataset, test_size=0.2, random_state=42)
+# 
+train_loader = DataLoader(train_dataset, batch_size=10, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
+
+# Set fixed random number seed
+torch.manual_seed(42) 
+
+# Define hyperparameters to tune
+learning_rates = [0.001, 0.01, 0.1, 0.5, 1]
+num_epochs = [50, 100, 200]
+
+
+best_accuracy = 0
+best_lr = 0
+best_epochs = 0
+
+# Perform k-fold cross-validation
+num_folds = 5
+kf = KFold(n_splits=num_folds)
+
+
+
         
 
 for lr in learning_rates:
