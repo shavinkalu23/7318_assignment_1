@@ -17,12 +17,14 @@ from sklearn.model_selection import train_test_split, KFold
 
 # Define the Perceptron model
 class Perceptron(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, activation):
         super(Perceptron, self).__init__()
         self.linear = nn.Linear(input_size, 1)
-
+        self.activation = activation
+    
     def forward(self, x):
         out = torch.sigmoid(self.linear(x))
+        out = self.activation(out)
         return out
 
 
@@ -115,15 +117,6 @@ def test_loop(dataloader, model, loss_fn):
             accuracy = correct / total
             return accuracy
 
-# set epoch of 50 to get rough idea of which parameters work
-
-learning_rate = 0.5
-batch_size = 10
-epochs  = 50
-
-
-
-
     
 dataset = MyDataset('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt')
 
@@ -138,9 +131,11 @@ test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 torch.manual_seed(42) 
 
 # Define hyperparameters to tune
-learning_rates = [0.001, 0.01, 0.1, 0.5, 1]
-num_epochs = [50, 100, 200]
-
+learning_rates = [0.001, 0.01, 0.1, 1]
+num_epochs = [50] #, 100, 200]
+optimizers = ['SGD', 'Adam', 'RMSprop']
+# Define different activation functions
+activations = [nn.ReLU(), nn.Sigmoid(), nn.Tanh()]
 
 best_accuracy = 0
 best_lr = 0
@@ -150,46 +145,48 @@ best_epochs = 0
 num_folds = 5
 kf = KFold(n_splits=num_folds)
 
-
-
+for activation in activations:
+    for optimizer_name in optimizers:
+        for lr in learning_rates:
+            for epochs in num_epochs:
+                avg_accuracy = 0
         
-
-for lr in learning_rates:
-    for epochs in num_epochs:
-        avg_accuracy = 0
-
-        for train_indices, val_indices in kf.split(train_dataset):
-            train_val_dataset = torch.utils.data.Subset(train_dataset, train_indices)
-            val_dataset = torch.utils.data.Subset(train_dataset, val_indices)
-
-            train_val_loader = DataLoader(train_val_dataset, batch_size=64, shuffle=True)
-            val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-
-            # Define model, loss function, and optimizer
-            model = Perceptron(len(dataset[0][0]))
-            loss_fn= nn.BCELoss()
-            optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-
-            # Train the model on the training set
-            for epoch in range(epochs):
-                train_loop(train_val_loader, model, loss_fn, optimizer)
-
-            # Evaluate on the validation set
-            accuracy = test_loop(val_loader, model, loss_fn)
-                
-            avg_accuracy += accuracy
-
-        avg_accuracy /= num_folds
-
-        # Check if this combination of hyperparameters gives better average accuracy
-        if avg_accuracy > best_accuracy:
-            best_accuracy = avg_accuracy
-            best_lr = lr
-            best_epochs = epochs
-
+                for train_indices, val_indices in kf.split(train_dataset):
+                    train_val_dataset = torch.utils.data.Subset(train_dataset, train_indices)
+                    val_dataset = torch.utils.data.Subset(train_dataset, val_indices)
+        
+                    train_val_loader = DataLoader(train_val_dataset, batch_size=64, shuffle=True)
+                    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+        
+                    # Define model, loss function, and optimizer
+                    model = Perceptron(len(dataset[0][0]),activation)
+                    loss_fn= nn.BCELoss()
+                    
+                    optimizer = getattr(torch.optim, optimizer_name)(model.parameters(), lr=lr)
+                    #optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        
+                    # Train the model on the training set
+                    for epoch in range(epochs):
+                        train_loop(train_val_loader, model, loss_fn, optimizer)
+        
+                    # Evaluate on the validation set
+                    accuracy = test_loop(val_loader, model, loss_fn)
+                        
+                    avg_accuracy += accuracy
+        
+                avg_accuracy /= num_folds
+        
+                # Check if this combination of hyperparameters gives better average accuracy
+                if avg_accuracy > best_accuracy:
+                    best_accuracy = avg_accuracy
+                    best_lr = lr
+                    #best_epochs = epochs
+                    best_activation = activation
+                    best_optimizer = optimizer
+                    
 # Train the final model with the best hyperparameters on the combined training set
-final_model = Perceptron(len(dataset[0][0]))
-final_optimizer = torch.optim.SGD(final_model.parameters(), lr=best_lr)
+final_model = Perceptron(len(dataset[0][0]),best_activation)
+final_optimizer = getattr(torch.optim, best_optimizer)(final_model.parameters(), lr=best_lr)
 
 for epoch in range(best_epochs):
     for features, labels in train_loader:
@@ -198,7 +195,9 @@ for epoch in range(best_epochs):
 # Evaluate the final model on the test set
 test_accuracy = test_loop(test_loader,model,loss_fn)
 
-print(f'Best Learning Rate: {best_lr}')
-print(f'Best Number of Epochs: {best_epochs}')
+print(f'Best learning rate: {best_lr}')
+#print(f'Best Number of Epochs: {best_epochs}')
+print(f'Best activation function: {best_activation}')
+print(f'Best optimizer: {best_optimizer}')
 print(f'Training Accuracy: {best_accuracy:.4f}')
 print(f'Test Accuracy: {test_accuracy:.4f}')
