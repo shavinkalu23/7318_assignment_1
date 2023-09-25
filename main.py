@@ -69,16 +69,18 @@ dataset = MyDataset('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learni
 
 
 # Split dataset into training, validation, and test sets
-train_val_dataset, test_dataset = train_test_split(dataset, test_size=0.2, random_state=42)
-train_dataset, val_dataset = train_test_split(train_val_dataset, test_size=0.25, random_state=42)
+train_dataset, test_dataset = train_test_split(dataset, test_size=0.2, random_state=42)
 # 
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
+# Set fixed random number seed
+torch.manual_seed(42) 
+
 # Define hyperparameters to tune
-learning_rates = [0.001, 0.01, 0.1, 0.5, 10, 100]
+learning_rates = [0.001, 0.01, 0.1, 0.5, 1]
 num_epochs = [50, 100, 200]
+
 
 best_accuracy = 0
 best_lr = 0
@@ -88,15 +90,45 @@ best_epochs = 0
 num_folds = 5
 kf = KFold(n_splits=num_folds)
 
+
+def train_loop(dataloader, model,loss_fn, optimizer):
+    #size = len(dataloader.dataset)
+    model.train()
+    for features, labels in train_loader:
+        outputs = model(features)
+        loss = loss_fn(outputs, labels.unsqueeze(1))
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+
+            
+            
+def test_loop(dataloader, model, loss_fn):
+        model.eval()
+        with torch.no_grad(): #Ensure no gradients are computed during testing
+            correct = 0
+            total = 0
+            for features, labels in val_loader:
+                outputs = model(features)
+                predicted = (outputs >= 0.5).float()
+                total += labels.size(0)
+                correct += (predicted == labels.unsqueeze(1)).sum().item()
+
+            accuracy = correct / total
+            return accuracy
+        
+
 for lr in learning_rates:
     for epochs in num_epochs:
         avg_accuracy = 0
 
-        for train_indices, val_indices in kf.split(train_val_dataset):
-            train_dataset = torch.utils.data.Subset(train_val_dataset, train_indices)
-            val_dataset = torch.utils.data.Subset(train_val_dataset, val_indices)
+        for train_indices, val_indices in kf.split(train_dataset):
+            train_val_dataset = torch.utils.data.Subset(train_dataset, train_indices)
+            val_dataset = torch.utils.data.Subset(train_dataset, val_indices)
 
-            train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+            train_val_loader = DataLoader(train_val_dataset, batch_size=64, shuffle=True)
             val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
             # Define model, loss function, and optimizer
@@ -106,27 +138,12 @@ for lr in learning_rates:
 
             # Train the model on the training set
             for epoch in range(epochs):
-                for features, labels in train_loader:
-                    outputs = model(features)
-                    loss = loss_fn(outputs, labels.unsqueeze(1))
-
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                train_loop(train_val_loader, model, loss_fn, optimizer)
 
             # Evaluate on the validation set
-            model.eval()
-            with torch.no_grad():
-                correct = 0
-                total = 0
-                for features, labels in val_loader:
-                    outputs = model(features)
-                    predicted = (outputs >= 0.5).float()
-                    total += labels.size(0)
-                    correct += (predicted == labels.unsqueeze(1)).sum().item()
-
-                accuracy = correct / total
-                avg_accuracy += accuracy
+            accuracy = test_loop(val_loader, model, loss_fn)
+                
+            avg_accuracy += accuracy
 
         avg_accuracy /= num_folds
 
@@ -142,25 +159,10 @@ final_optimizer = torch.optim.SGD(final_model.parameters(), lr=best_lr)
 
 for epoch in range(best_epochs):
     for features, labels in train_loader:
-        outputs = final_model(features)
-        loss = loss_fn(outputs, labels.unsqueeze(1))
-
-        final_optimizer.zero_grad()
-        loss.backward()
-        final_optimizer.step()
+        train_loop(train_val_loader, model, loss_fn, optimizer)
 
 # Evaluate the final model on the test set
-final_model.eval()
-with torch.no_grad():
-    correct = 0
-    total = 0
-    for features, labels in test_loader:
-        outputs = final_model(features)
-        predicted = (outputs >= 0.5).float()
-        total += labels.size(0)
-        correct += (predicted == labels.unsqueeze(1)).sum().item()
-
-    test_accuracy = correct / total
+test_accuracy = test_loop(test_loader,model,loss_fn)
 
 print(f'Best Learning Rate: {best_lr}')
 print(f'Best Number of Epochs: {best_epochs}')
