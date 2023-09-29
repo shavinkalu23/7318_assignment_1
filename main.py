@@ -15,6 +15,8 @@ from numpy import genfromtxt
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split, KFold
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score
+
 # Define the Perceptron model
 class Perceptron(nn.Module):
     def __init__(self, input_size, activation):
@@ -29,9 +31,9 @@ class Perceptron(nn.Module):
 
 
 class MultiLayerPerceptron(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size):
+    def __init__(self, input_size, hidden_sizes, output_size,activation):
         super(MultiLayerPerceptron, self).__init__()
-        
+        self.activation = activation
         layers = []
         sizes = [input_size] + hidden_sizes + [output_size]
         for i in range(len(sizes)-1):
@@ -41,14 +43,11 @@ class MultiLayerPerceptron(nn.Module):
         self.model = nn.Sequential(*layers)
         
     def forward(self, x):
-        return torch.sigmoid(self.model(x))
+        out = torch.sigmoid(self.model(x))
+        out = self.activation(out)
+        return out
 
-# Usage example:
-input_size = 8  # Assuming 8 input features
-hidden_sizes = [16, 8]  # Example: Two hidden layers with 16 and 8 units
-output_size = 1
 
-model = MultiLayerPerceptron(input_size, hidden_sizes, output_size)
 
 
 #Read normialised data file
@@ -118,7 +117,7 @@ def test_loop(dataloader, model, loss_fn):
             return accuracy
 
     
-dataset = MyDataset('/Users/shavinkalu/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt')
+dataset = MyDataset('/Users/a1904121/Library/CloudStorage/GoogleDrive-a1904121@adelaide.edu.au/Other computers/My MacBook Air/Adelaide Uni/2023 Trimester 3/Deep Learning Fundamentals/Assignment 1/diabetes_scale.txt')
 
 
 # Split dataset into training, validation, and test sets
@@ -129,64 +128,121 @@ train_dataset, test_dataset = train_test_split(dataset, test_size=0.2, random_st
 torch.manual_seed(42) 
 
 # Define hyperparameters to tune
-learning_rates = [0.001, 0.01, 0.1, 1]
-num_epochs = [50] #, 100, 200]
+learning_rates = [ 0.001, 0.01, 0.1, 1]
+epochs =50 #, 100, 200]
 optimizers = ['SGD', 'Adam', 'RMSprop']
 # Define different activation functions
 activations = [nn.ReLU(), nn.Sigmoid(), nn.Tanh()]
 batch_sizes = [10, 30, 90]
 
-best_accuracy = 0
-best_lr = 0
-best_epochs = 0
+slp_best_accuracy = 0
+slp_best_lr = 0
+slp_best_epochs = 0
+
+mlp_best_accuracy = 0
+mlp_best_lr = 0
+mlp_best_epochs = 0
 
 # Perform k-fold cross-validation
 num_folds = 5
 kf = KFold(n_splits=num_folds)
 
+# MLP
+hidden_sizes = [16]  
+output_size = 1
+
+# Create an empty list to store the results
+results_list= []
 
 #Coarse tuning (small epochs)
 for activation in activations:
     for optimizer_name in optimizers:
         for lr in learning_rates:
             for bs in batch_sizes:
-                for epochs in num_epochs:
-                    avg_accuracy = 0
-            
-                    for train_indices, val_indices in kf.split(train_dataset):
-                        train_val_dataset = torch.utils.data.Subset(train_dataset, train_indices)
-                        val_dataset = torch.utils.data.Subset(train_dataset, val_indices)
-            
-                        train_val_loader = DataLoader(train_val_dataset, batch_size=bs, shuffle=True)
-                        val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False)
-            
-                        # Define model, loss function, and optimizer
-                        model = Perceptron(len(dataset[0][0]),activation)
-                        loss_fn= nn.BCELoss()
-                        
-                        optimizer = getattr(torch.optim, optimizer_name)(model.parameters(), lr=lr)
-                        #optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-            
-                        # Train the model on the training set
-                        for epoch in range(epochs):
-                            train_loop(train_val_loader, model, loss_fn, optimizer)
-            
-                        # Evaluate on the validation set
-                        accuracy = test_loop(val_loader, model, loss_fn)
-                            
-                        avg_accuracy += accuracy
-            
-                    avg_accuracy /= num_folds
-            
-                    # Check if this combination of hyperparameters gives better average accuracy
-                    if avg_accuracy > best_accuracy:
-                        best_accuracy = avg_accuracy
-                        best_lr = lr
-                        #best_epochs = epochs
-                        best_activation = activation
-                        best_optimizer = optimizer_name
-                        best_batch_size = bs
- 
+                slp_avg_accuracy = 0
+                mlp_avg_accuracy = 0
+        
+                for train_indices, val_indices in kf.split(train_dataset):
+                    train_val_dataset = torch.utils.data.Subset(train_dataset, train_indices)
+                    val_dataset = torch.utils.data.Subset(train_dataset, val_indices)
+        
+                    train_val_loader = DataLoader(train_val_dataset, batch_size=bs, shuffle=True)
+                    val_loader = DataLoader(val_dataset, batch_size=bs, shuffle=False)
+        
+                    # Define model, loss function, and optimizer
+                    slp_model = Perceptron(len(dataset[0][0]),activation)
+                    
+                    slp_optimizer = getattr(torch.optim, optimizer_name)(slp_model.parameters(), lr=lr)
+                    #optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+        
+                    #Use same loss_fn for SLP and MLP 
+                    loss_fn= nn.BCELoss()
+                    # Define model, loss function, and optimizer
+                    mlp_model = MultiLayerPerceptron(len(dataset[0][0]),hidden_sizes, output_size, activation)
+                    mlp_optimizer = getattr(torch.optim, optimizer_name)(mlp_model.parameters(), lr=lr)
+        
+        
+        
+                    # Train the model on the training set
+                    for epoch in range(epochs):
+                        train_loop(train_val_loader, slp_model, loss_fn, slp_optimizer)
+                        train_loop(train_val_loader, mlp_model, loss_fn, mlp_optimizer)
+                    # Evaluate on the validation set
+                    slp_accuracy = test_loop(val_loader, slp_model, loss_fn)
+                    mlp_accuracy = test_loop(val_loader, mlp_model, loss_fn)
+                    
+                    
+                    slp_avg_accuracy += slp_accuracy
+                    mlp_avg_accuracy += mlp_accuracy
+                    
+                    
+
+        
+                slp_avg_accuracy /= num_folds
+                mlp_avg_accuracy /= num_folds
+                
+                # Append results to the list
+                results_list.append({
+                'Activation': activation,
+                'Optimizer': optimizer_name,
+                'Learning Rate': lr,
+                'Batch Size': bs,
+                'SLP Accuracy': slp_avg_accuracy,
+                'MLP Accuracy': mlp_avg_accuracy})
+                # Check if this combination of hyperparameters gives better average accuracy
+                if slp_avg_accuracy > slp_best_accuracy:
+                    slp_best_accuracy = slp_avg_accuracy
+                    best_lr = lr
+                    #best_epochs = epochs
+                    slp_best_activation = activation
+                    slp_best_optimizer = optimizer_name
+                    slp_best_batch_size = bs
+                    
+                if mlp_avg_accuracy > mlp_best_accuracy:
+                    mlp_best_accuracy = mlp_avg_accuracy
+                    mlp_best_lr = lr
+                    #best_epochs = epochs
+                    mlp_best_activation = activation
+                    mlp_best_optimizer = optimizer_name
+                    mlp_best_batch_size = bs
+
+# Convert the list of dictionaries to a DataFrame
+results_df = pd.DataFrame(results_list)                     
+
+model = slp_model
+best_batch_size = slp_best_batch_size
+best_lr = slp_best_lr
+best_activation = slp_best_activation
+best_optimizer = slp_best_optimizer
+
+#uncomment to use MLP instead of SLP for fine tuning
+# model = mlp_model
+# best_batch_size = mlp_best_batch_size
+# best_lr = mlp_best_lr
+# best_activation = mlp_best_activation
+# best_optimizer = mlp_best_optimizer
+
+                
 #Fine tuning
 epochs = 200 #, 100, 200]
 # Define hyperparameters to tune
@@ -198,6 +254,7 @@ val_accuracies_array =  np.zeros((epochs,len(learning_rates)))
 
 i=0
 # Lists to store training and validation accuracies
+best_accuracy = 0
 for lr in learning_rates:
     
     avg_accuracy = 0
@@ -278,12 +335,13 @@ test_loader = DataLoader(test_dataset, batch_size=best_batch_size, shuffle=False
 final_model = Perceptron(len(dataset[0][0]),best_activation)
 final_optimizer = getattr(torch.optim, best_optimizer)(final_model.parameters(), lr=best_lr)
 
-for epoch in range(best_epochs):
+# Train best model on entire training dataset
+for epoch in range(epochs):
     for features, labels in train_loader:
         train_loop(train_loader, final_model, loss_fn, final_optimizer)
 
 # Evaluate the final model on the test set
-test_accuracy = test_loop(test_loader,model,loss_fn)
+test_accuracy = test_loop(test_loader,final_model,loss_fn)
 
 print(f'Best learning rate: {best_lr}')
 print(f'Best batch size: {best_batch_size}')
@@ -291,3 +349,31 @@ print(f'Best activation function: {best_activation}')
 print(f'Best optimizer: {best_optimizer}')
 print(f'Training Accuracy: {best_accuracy:.4f}')
 print(f'Test Accuracy: {test_accuracy:.4f}')
+
+
+
+# Assuming final_model is your trained Perceptron model and test_loader is your DataLoader for the test set
+
+final_model.eval()
+y_true = []
+y_scores = []
+
+with torch.no_grad():
+    for features, labels in test_loader:
+        outputs = final_model(features)
+        y_true.extend(labels.numpy())
+        y_scores.extend(outputs.numpy())
+
+y_true = torch.tensor(y_true)
+y_scores = torch.tensor(y_scores)
+
+# Calculate AUC
+auc = roc_auc_score(y_true, y_scores)
+print(f'AUC: {auc:.4f}')
+
+
+
+
+
+
+
